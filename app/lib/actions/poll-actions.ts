@@ -80,8 +80,38 @@ export async function submitVote(pollId: string, optionIndex: number) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Optionally require login to vote
-  // if (!user) return { error: 'You must be logged in to vote.' };
+  // Validate poll exists
+  const { data: poll, error: pollError } = await supabase
+    .from("polls")
+    .select("id, options")
+    .eq("id", pollId)
+    .single();
+
+  if (pollError || !poll) {
+    return { error: "Poll not found." };
+  }
+
+  // Validate option index
+  if (optionIndex < 0 || optionIndex >= poll.options.length) {
+    return { error: "Invalid option selected." };
+  }
+
+  // Check if user already voted (prevent duplicate voting)
+  if (user) {
+    const { data: existingVote } = await supabase
+      .from("votes")
+      .select("id")
+      .eq("poll_id", pollId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (existingVote) {
+      return { error: "You have already voted on this poll." };
+    }
+  }
+
+  // For anonymous users, we could check by IP or session, but for now we'll allow it
+  // In production, consider implementing IP-based duplicate prevention
 
   const { error } = await supabase.from("votes").insert([
     {
@@ -92,14 +122,62 @@ export async function submitVote(pollId: string, optionIndex: number) {
   ]);
 
   if (error) return { error: error.message };
+  
+  // Revalidate the poll page to show updated results
+  revalidatePath(`/polls/${pollId}`);
   return { error: null };
 }
 
 // DELETE POLL
 export async function deletePoll(id: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("polls").delete().eq("id", id);
-  if (error) return { error: error.message };
+  
+  // Get user from session
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  
+  if (userError || !user) {
+    return { error: "You must be logged in to delete a poll." };
+  }
+  
+  // First check if the poll exists and belongs to the user
+  const { data: poll, error: fetchError } = await supabase
+    .from("polls")
+    .select("user_id")
+    .eq("id", id)
+    .single();
+  
+  if (fetchError) {
+    return { error: "Poll not found." };
+  }
+  
+  if (poll.user_id !== user.id) {
+    return { error: "You can only delete your own polls." };
+  }
+  
+  // Delete associated votes first
+  const { error: votesError } = await supabase
+    .from("votes")
+    .delete()
+    .eq("poll_id", id);
+  
+  if (votesError) {
+    return { error: `Failed to delete votes: ${votesError.message}` };
+  }
+  
+  // Then delete the poll
+  const { error } = await supabase
+    .from("polls")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id); // Double-check ownership
+  
+  if (error) {
+    return { error: error.message };
+  }
+  
   revalidatePath("/polls");
   return { error: null };
 }
