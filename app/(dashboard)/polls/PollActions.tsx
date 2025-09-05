@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/app/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { deletePoll } from "@/app/lib/actions/poll-actions";
+import { sanitizeText } from "@/app/lib/utils/sanitize";
 
 interface Poll {
   id: string;
@@ -32,7 +33,7 @@ export default function PollActions({ poll }: PollActionsProps) {
           <div className="h-full">
             <div>
               <h2 className="group-hover:text-blue-600 transition-colors font-bold text-lg">
-                {poll.question}
+                {sanitizeText(poll.question)}
               </h2>
               <p className="text-slate-500">{poll.options.length} options</p>
             </div>

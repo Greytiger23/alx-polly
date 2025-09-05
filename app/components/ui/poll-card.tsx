@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Poll } from '@/app/lib/types';
+import { sanitizeText } from '@/app/lib/utils/sanitize';
 
 interface PollCardProps {
   poll: {
@@ -23,8 +24,8 @@ export function PollCard({ poll }: PollCardProps) {
     <Link href={`/polls/${poll.id}`} className="group block h-full">
       <Card className="h-full transition-all hover:shadow-md">
         <CardHeader>
-          <CardTitle className="group-hover:text-blue-600 transition-colors">{poll.title}</CardTitle>
-          {poll.description && <CardDescription>{poll.description}</CardDescription>}
+          <CardTitle className="group-hover:text-blue-600 transition-colors">{sanitizeText(poll.title)}</CardTitle>
+          {poll.description && <CardDescription>{sanitizeText(poll.description)}</CardDescription>}
         </CardHeader>
         <CardContent>
           <div className="text-sm text-slate-500">

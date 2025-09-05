@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { getAllPolls, checkAdminAccess } from "@/app/lib/actions/admin-actions";
 import AdminDeleteButton from './AdminDeleteButton';
+import { sanitizeText } from '@/app/lib/utils/sanitize';
 
 interface Poll {
   id: string;
@@ -52,7 +53,7 @@ export default async function AdminPage() {
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div>
-                  <CardTitle className="text-lg">{poll.question}</CardTitle>
+                  <CardTitle className="text-lg">{sanitizeText(poll.question)}</CardTitle>
                   <CardDescription>
                     <div className="space-y-1 mt-2">
                       <div>
@@ -83,7 +84,7 @@ export default async function AdminPage() {
                 <ul className="list-disc list-inside space-y-1">
                   {poll.options.map((option, index) => (
                     <li key={index} className="text-gray-700">
-                      {option}
+                      {sanitizeText(option)}
                     </li>
                   ))}
                 </ul>

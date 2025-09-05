@@ -3,15 +3,67 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
+// Input validation and sanitization helper
+function validateAndSanitizeInput(input: string, maxLength: number, fieldName: string) {
+  if (!input || typeof input !== 'string') {
+    return { isValid: false, error: `${fieldName} is required.` };
+  }
+  
+  const trimmed = input.trim();
+  
+  if (trimmed.length === 0) {
+    return { isValid: false, error: `${fieldName} cannot be empty.` };
+  }
+  
+  if (trimmed.length > maxLength) {
+    return { isValid: false, error: `${fieldName} must be ${maxLength} characters or less.` };
+  }
+  
+  // Basic XSS prevention - remove potentially dangerous characters
+  const sanitized = trimmed
+    .replace(/[<>"'&]/g, '') // Remove basic HTML/script injection characters
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+=/gi, ''); // Remove event handlers like onclick=
+  
+  return { isValid: true, sanitized };
+}
+
 // CREATE POLL
 export async function createPoll(formData: FormData) {
   const supabase = await createClient();
 
-  const question = formData.get("question") as string;
-  const options = formData.getAll("options").filter(Boolean) as string[];
+  const questionRaw = formData.get("question") as string;
+  const optionsRaw = formData.getAll("options").filter(Boolean) as string[];
 
-  if (!question || options.length < 2) {
-    return { error: "Please provide a question and at least two options." };
+  // Validate question
+  const questionValidation = validateAndSanitizeInput(questionRaw, 500, "Question");
+  if (!questionValidation.isValid) {
+    return { error: questionValidation.error };
+  }
+  const question = questionValidation.sanitized!;
+
+  // Validate options
+  if (optionsRaw.length < 2) {
+    return { error: "Please provide at least two options." };
+  }
+  
+  if (optionsRaw.length > 10) {
+    return { error: "Maximum 10 options allowed." };
+  }
+
+  const options: string[] = [];
+  for (let i = 0; i < optionsRaw.length; i++) {
+    const optionValidation = validateAndSanitizeInput(optionsRaw[i], 200, `Option ${i + 1}`);
+    if (!optionValidation.isValid) {
+      return { error: optionValidation.error };
+    }
+    options.push(optionValidation.sanitized!);
+  }
+  
+  // Check for duplicate options
+  const uniqueOptions = new Set(options);
+  if (uniqueOptions.size !== options.length) {
+    return { error: "Duplicate options are not allowed." };
   }
 
   // Get user from session
@@ -128,6 +180,75 @@ export async function submitVote(pollId: string, optionIndex: number) {
   return { error: null };
 }
 
+// GET POLL WITH RESULTS
+export async function getPollWithResults(id: string) {
+  const supabase = await createClient();
+  
+  // Get poll data
+  const { data: poll, error: pollError } = await supabase
+    .from("polls")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (pollError || !poll) {
+    return { poll: null, results: null, error: "Poll not found." };
+  }
+
+  // Get vote counts for each option
+  const { data: votes, error: votesError } = await supabase
+    .from("votes")
+    .select("option_index")
+    .eq("poll_id", id);
+
+  if (votesError) {
+    return { poll: null, results: null, error: "Failed to fetch vote results." };
+  }
+
+  // Calculate results
+  const totalVotes = votes.length;
+  const optionCounts = new Array(poll.options.length).fill(0);
+  
+  votes.forEach((vote) => {
+    if (vote.option_index >= 0 && vote.option_index < poll.options.length) {
+      optionCounts[vote.option_index]++;
+    }
+  });
+
+  const results = poll.options.map((option: string, index: number) => ({
+    option,
+    votes: optionCounts[index],
+    percentage: totalVotes > 0 ? Math.round((optionCounts[index] / totalVotes) * 100) : 0,
+  }));
+
+  return { poll, results, totalVotes, error: null };
+}
+
+// CHECK IF USER HAS VOTED
+export async function hasUserVoted(pollId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { hasVoted: false, error: null };
+  }
+
+  const { data: vote, error } = await supabase
+    .from("votes")
+    .select("option_index")
+    .eq("poll_id", pollId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+    return { hasVoted: false, error: error.message };
+  }
+
+  return { hasVoted: !!vote, selectedOption: vote?.option_index, error: null };
+}
+
 // DELETE POLL
 export async function deletePoll(id: string) {
   const supabase = await createClient();
@@ -186,11 +307,38 @@ export async function deletePoll(id: string) {
 export async function updatePoll(pollId: string, formData: FormData) {
   const supabase = await createClient();
 
-  const question = formData.get("question") as string;
-  const options = formData.getAll("options").filter(Boolean) as string[];
+  const questionRaw = formData.get("question") as string;
+  const optionsRaw = formData.getAll("options").filter(Boolean) as string[];
 
-  if (!question || options.length < 2) {
-    return { error: "Please provide a question and at least two options." };
+  // Validate question
+  const questionValidation = validateAndSanitizeInput(questionRaw, 500, "Question");
+  if (!questionValidation.isValid) {
+    return { error: questionValidation.error };
+  }
+  const question = questionValidation.sanitized!;
+
+  // Validate options
+  if (optionsRaw.length < 2) {
+    return { error: "Please provide at least two options." };
+  }
+  
+  if (optionsRaw.length > 10) {
+    return { error: "Maximum 10 options allowed." };
+  }
+
+  const options: string[] = [];
+  for (let i = 0; i < optionsRaw.length; i++) {
+    const optionValidation = validateAndSanitizeInput(optionsRaw[i], 200, `Option ${i + 1}`);
+    if (!optionValidation.isValid) {
+      return { error: optionValidation.error };
+    }
+    options.push(optionValidation.sanitized!);
+  }
+  
+  // Check for duplicate options
+  const uniqueOptions = new Set(options);
+  if (uniqueOptions.size !== options.length) {
+    return { error: "Duplicate options are not allowed." };
   }
 
   // Get user from session
