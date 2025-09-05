@@ -2,10 +2,33 @@
 
 import { createClient } from '@/lib/supabase/server';
 
-// Check if current user has admin privileges
+/**
+ * Checks if the current authenticated user has administrative privileges.
+ * 
+ * This function serves as a security gate for admin-only operations.
+ * Currently uses a hardcoded email list for simplicity, but in production
+ * should be replaced with a proper role-based access control system.
+ * 
+ * @returns Object containing:
+ *   - isAdmin: Boolean indicating if user has admin privileges
+ *   - error: Error message or null on success
+ * 
+ * @example
+ * ```typescript
+ * const { isAdmin, error } = await checkAdminAccess();
+ * if (error) {
+ *   console.error('Access check failed:', error);
+ * } else if (isAdmin) {
+ *   console.log('User has admin privileges');
+ * } else {
+ *   console.log('User does not have admin privileges');
+ * }
+ * ```
+ */
 export async function checkAdminAccess() {
   const supabase = await createClient();
   
+  // Get current user session
   const {
     data: { user },
     error: userError,
@@ -15,14 +38,14 @@ export async function checkAdminAccess() {
     return { isAdmin: false, error: 'Not authenticated' };
   }
   
-  // Check if user has admin role in user metadata or a separate admin table
-  // For now, we'll check if the user email is in a predefined admin list
-  // In production, this should be stored in the database
+  // TODO: Replace with database-driven role system in production
+  // Currently using hardcoded admin email list for simplicity
   const adminEmails = [
     'admin@alxpolly.com',
     // Add more admin emails as needed
   ];
   
+  // Check if user's email is in the admin list
   const isAdmin = adminEmails.includes(user.email || '');
   
   if (!isAdmin) {
@@ -32,8 +55,30 @@ export async function checkAdminAccess() {
   return { isAdmin: true, error: null };
 }
 
-// Get all polls for admin view with proper authorization
+/**
+ * Retrieves all polls in the system for administrative oversight.
+ * 
+ * This function provides administrators with a comprehensive view of all polls
+ * created by users, ordered by creation date (newest first). It includes
+ * proper authorization checks to ensure only admins can access this data.
+ * 
+ * @returns Object containing:
+ *   - polls: Array of all poll objects or empty array on error
+ *   - error: Error message or null on success
+ * 
+ * @example
+ * ```typescript
+ * const { polls, error } = await getAllPolls();
+ * if (error) {
+ *   console.error('Failed to fetch polls:', error);
+ * } else {
+ *   console.log(`Found ${polls.length} polls in the system`);
+ *   polls.forEach(poll => console.log(`Poll: ${poll.title}`));
+ * }
+ * ```
+ */
 export async function getAllPolls() {
+  // Verify admin privileges before proceeding
   const adminCheck = await checkAdminAccess();
   
   if (!adminCheck.isAdmin) {
@@ -42,6 +87,7 @@ export async function getAllPolls() {
   
   const supabase = await createClient();
   
+  // Fetch all polls ordered by creation date (newest first)
   const { data, error } = await supabase
     .from('polls')
     .select('*')
@@ -54,8 +100,28 @@ export async function getAllPolls() {
   return { polls: data || [], error: null };
 }
 
-// Admin delete poll with proper authorization
+/**
+ * Deletes a poll and all associated votes with administrative privileges.
+ * 
+ * This function allows administrators to remove any poll from the system,
+ * regardless of ownership. It performs a cascading delete to maintain
+ * database integrity by removing votes before deleting the poll.
+ * 
+ * @param pollId - The unique identifier of the poll to delete
+ * @returns Object with error message or null on success
+ * 
+ * @example
+ * ```typescript
+ * const result = await adminDeletePoll('poll-123');
+ * if (result.error) {
+ *   console.error('Admin deletion failed:', result.error);
+ * } else {
+ *   console.log('Poll successfully deleted by admin');
+ * }
+ * ```
+ */
 export async function adminDeletePoll(pollId: string) {
+  // Verify admin privileges before allowing deletion
   const adminCheck = await checkAdminAccess();
   
   if (!adminCheck.isAdmin) {
@@ -64,7 +130,7 @@ export async function adminDeletePoll(pollId: string) {
   
   const supabase = await createClient();
   
-  // First delete all votes associated with the poll
+  // Delete all votes associated with the poll first (cascading delete)
   const { error: votesError } = await supabase
     .from('votes')
     .delete()
@@ -74,7 +140,7 @@ export async function adminDeletePoll(pollId: string) {
     return { error: `Failed to delete votes: ${votesError.message}` };
   }
   
-  // Then delete the poll
+  // Delete the poll itself after votes are removed
   const { error: pollError } = await supabase
     .from('polls')
     .delete()
