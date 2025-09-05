@@ -3,18 +3,42 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-// Input validation and sanitization helper
+/**
+ * Validates and sanitizes user input to prevent XSS attacks and ensure data integrity.
+ * 
+ * This helper function performs multiple security checks:
+ * - Validates input type and presence
+ * - Trims whitespace and checks for empty strings
+ * - Enforces maximum length limits
+ * - Removes potentially dangerous HTML/JavaScript characters
+ * 
+ * @param input - The raw input string to validate
+ * @param maxLength - Maximum allowed length for the input
+ * @param fieldName - Name of the field for error messages
+ * @returns Object with validation result and sanitized input or error message
+ * 
+ * @example
+ * ```typescript
+ * const result = validateAndSanitizeInput("<script>alert('xss')</script>", 100, "Question");
+ * if (result.isValid) {
+ *   console.log(result.sanitized); // "scriptalert('xss')/script"
+ * }
+ * ```
+ */
 function validateAndSanitizeInput(input: string, maxLength: number, fieldName: string) {
+  // Check if input exists and is a string
   if (!input || typeof input !== 'string') {
     return { isValid: false, error: `${fieldName} is required.` };
   }
   
   const trimmed = input.trim();
   
+  // Ensure input is not empty after trimming
   if (trimmed.length === 0) {
     return { isValid: false, error: `${fieldName} cannot be empty.` };
   }
   
+  // Enforce maximum length to prevent database overflow
   if (trimmed.length > maxLength) {
     return { isValid: false, error: `${fieldName} must be ${maxLength} characters or less.` };
   }
@@ -28,21 +52,49 @@ function validateAndSanitizeInput(input: string, maxLength: number, fieldName: s
   return { isValid: true, sanitized };
 }
 
-// CREATE POLL
+/**
+ * Creates a new poll with the provided question and options.
+ * 
+ * This function handles the complete poll creation process:
+ * - Validates and sanitizes all user inputs
+ * - Ensures user authentication
+ * - Checks for duplicate options
+ * - Stores the poll in the database
+ * - Revalidates the polls page cache
+ * 
+ * @param formData - FormData object containing:
+ *   - question: The poll question (max 500 chars)
+ *   - options: Array of poll options (2-10 options, max 200 chars each)
+ * @returns Object with error message or null on success
+ * 
+ * @example
+ * ```typescript
+ * const formData = new FormData();
+ * formData.append('question', 'What is your favorite color?');
+ * formData.append('options', 'Red');
+ * formData.append('options', 'Blue');
+ * 
+ * const result = await createPoll(formData);
+ * if (result.error) {
+ *   console.error('Failed to create poll:', result.error);
+ * }
+ * ```
+ */
 export async function createPoll(formData: FormData) {
   const supabase = await createClient();
 
+  // Extract raw form data
   const questionRaw = formData.get("question") as string;
   const optionsRaw = formData.getAll("options").filter(Boolean) as string[];
 
-  // Validate question
+  // Validate and sanitize the poll question
   const questionValidation = validateAndSanitizeInput(questionRaw, 500, "Question");
   if (!questionValidation.isValid) {
     return { error: questionValidation.error };
   }
   const question = questionValidation.sanitized!;
 
-  // Validate options
+  // Validate minimum and maximum number of options
   if (optionsRaw.length < 2) {
     return { error: "Please provide at least two options." };
   }
@@ -51,6 +103,7 @@ export async function createPoll(formData: FormData) {
     return { error: "Maximum 10 options allowed." };
   }
 
+  // Validate and sanitize each poll option
   const options: string[] = [];
   for (let i = 0; i < optionsRaw.length; i++) {
     const optionValidation = validateAndSanitizeInput(optionsRaw[i], 200, `Option ${i + 1}`);
@@ -60,13 +113,13 @@ export async function createPoll(formData: FormData) {
     options.push(optionValidation.sanitized!);
   }
   
-  // Check for duplicate options
+  // Prevent duplicate options to ensure poll integrity
   const uniqueOptions = new Set(options);
   if (uniqueOptions.size !== options.length) {
     return { error: "Duplicate options are not allowed." };
   }
 
-  // Get user from session
+  // Verify user authentication before creating poll
   const {
     data: { user },
     error: userError,
@@ -78,6 +131,7 @@ export async function createPoll(formData: FormData) {
     return { error: "You must be logged in to create a poll." };
   }
 
+  // Insert the new poll into the database
   const { error } = await supabase.from("polls").insert([
     {
       user_id: user.id,
@@ -90,6 +144,7 @@ export async function createPoll(formData: FormData) {
     return { error: error.message };
   }
 
+  // Revalidate the polls page to show the new poll
   revalidatePath("/polls");
   return { error: null };
 }
