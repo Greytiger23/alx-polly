@@ -34,13 +34,18 @@ import { Textarea } from "@/components/ui/textarea";
  * ```
  */
 export default function PollCreateForm() {
-  const [question, setQuestion] = useState("");
-  const [options, setOptions] = useState(["", ""]);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Form state management
+  const [question, setQuestion] = useState(""); // Poll question text
+  const [options, setOptions] = useState(["", ""]); // Array of option texts (min 2)
+  const [error, setError] = useState<string | null>(null); // Validation error message
+  const [success, setSuccess] = useState(false); // Success state for feedback
+  const [isSubmitting, setIsSubmitting] = useState(false); // Loading state during submission
 
-  // Client-side validation
+  /**
+   * Validates the form data before submission
+   * Checks question length, option count, option length, and duplicates
+   * @returns boolean indicating if form is valid
+   */
   const validateForm = () => {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) {
@@ -79,17 +84,32 @@ export default function PollCreateForm() {
     return true;
   };
 
+  /**
+   * Updates a specific option's text value
+   * @param idx - Index of the option to update
+   * @param value - New text value for the option
+   */
   const handleOptionChange = (idx: number, value: string) => {
     setOptions((opts) => opts.map((opt, i) => (i === idx ? value : opt)));
   };
 
+  /** Adds a new empty option to the options array */
   const addOption = () => setOptions((opts) => [...opts, ""]);
+  
+  /**
+   * Removes an option from the array (minimum 2 options required)
+   * @param idx - Index of the option to remove
+   */
   const removeOption = (idx: number) => {
     if (options.length > 2) {
       setOptions((opts) => opts.filter((_, i) => i !== idx));
     }
   };
 
+  /**
+   * Handles form submission with validation and error handling
+   * @param formData - Form data from the form submission
+   */
   const handleSubmit = async (formData: FormData) => {
     if (!validateForm()) {
       return;
