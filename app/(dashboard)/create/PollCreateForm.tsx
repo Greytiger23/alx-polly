@@ -7,6 +7,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+/**
+ * Poll Creation Form Component
+ * 
+ * A comprehensive form for creating new polls with validation and user feedback.
+ * Handles dynamic option management, client-side validation, and form submission.
+ * 
+ * Features:
+ * - Dynamic option addition/removal (2-10 options)
+ * - Real-time character counting for question and options
+ * - Client-side validation with detailed error messages
+ * - Duplicate option detection
+ * - Loading states and success feedback
+ * - Automatic redirect after successful creation
+ * 
+ * Validation Rules:
+ * - Question: Required, max 500 characters
+ * - Options: 2-10 options, max 200 characters each, no duplicates
+ * 
+ * @returns JSX element containing the poll creation form
+ * 
+ * @example
+ * ```tsx
+ * // Used in the /create page
+ * <PollCreateForm />
+ * ```
+ */
 export default function PollCreateForm() {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(["", ""]);
